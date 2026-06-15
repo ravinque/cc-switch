@@ -8,7 +8,7 @@ use crate::app_config::{AppType, InstalledSkill, UnmanagedSkill};
 use crate::error::format_skill_error;
 use crate::services::skill::{
     DiscoverableSkill, ImportSkillSelection, MigrationResult, Skill, SkillBackupEntry, SkillRepo,
-    SkillService, SkillStorageLocation, SkillUninstallResult, SkillUpdateInfo,
+    SkillRepoStatus, SkillService, SkillStorageLocation, SkillUninstallResult, SkillUpdateInfo,
     SkillsShSearchResult,
 };
 use crate::store::AppState;
@@ -128,6 +128,19 @@ pub async fn discover_available_skills(
         .discover_available(repos)
         .await
         .map_err(|e| e.to_string())
+}
+
+/// 获取各仓库的技能发现状态（含错误信息）
+#[tauri::command]
+pub async fn get_skill_repo_statuses(
+    service: State<'_, SkillServiceState>,
+    app_state: State<'_, AppState>,
+) -> Result<Vec<SkillRepoStatus>, String> {
+    let repos = app_state.db.get_skill_repos().map_err(|e| e.to_string())?;
+    Ok(service
+        .0
+        .discover_repos_with_status(repos)
+        .await)
 }
 
 /// 检查 Skills 更新

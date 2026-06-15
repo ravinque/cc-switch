@@ -40,6 +40,8 @@ pub fn import_skill_from_deeplink(
         name: name.clone(),
         branch: request.branch.unwrap_or_else(|| "main".to_string()),
         enabled: request.enabled.unwrap_or(true),
+        git_url: None,
+        registry_url: None,
     };
 
     // Save using Database

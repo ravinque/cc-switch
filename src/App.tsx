@@ -1257,6 +1257,17 @@ function App() {
                     <Button
                       variant="ghost"
                       size="sm"
+                      onClick={() =>
+                        mcpPanelRef.current?.openInternalRegistry()
+                      }
+                      className="hover:bg-black/5 dark:hover:bg-white/5"
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      {t("mcp.internalRegistry.button")}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => mcpPanelRef.current?.openImport()}
                       className="hover:bg-black/5 dark:hover:bg-white/5"
                     >

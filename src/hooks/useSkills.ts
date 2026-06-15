@@ -62,6 +62,14 @@ export function useDiscoverableSkills() {
   });
 }
 
+export function useSkillRepoStatuses() {
+  return useQuery({
+    queryKey: ["skills", "repoStatuses"],
+    queryFn: () => skillsApi.getRepoStatuses(),
+    staleTime: 0,
+  });
+}
+
 /**
  * 安装 Skill
  * 成功后直接更新缓存，不触发重新加载/刷新
@@ -237,6 +245,7 @@ export function useAddSkillRepo() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["skills", "repos"] });
       queryClient.invalidateQueries({ queryKey: ["skills", "discoverable"] });
+      queryClient.invalidateQueries({ queryKey: ["skills", "repoStatuses"] });
     },
   });
 }
@@ -252,6 +261,7 @@ export function useRemoveSkillRepo() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["skills", "repos"] });
       queryClient.invalidateQueries({ queryKey: ["skills", "discoverable"] });
+      queryClient.invalidateQueries({ queryKey: ["skills", "repoStatuses"] });
     },
   });
 }

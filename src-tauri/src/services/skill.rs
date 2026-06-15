@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
+use std::process::Command;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::time::timeout;
@@ -69,6 +70,16 @@ pub struct DiscoverableSkill {
     /// 分支名称
     #[serde(rename = "repoBranch")]
     pub repo_branch: String,
+    /// 技能在源 Git 仓库中的克隆 URL（内部 registry 技能）
+    #[serde(
+        default,
+        rename = "sourceGitUrl",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub source_git_url: Option<String>,
+    /// 技能在源 Git 仓库中的相对路径
+    #[serde(default, rename = "sourcePath", skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
 }
 
 /// 技能对象（兼容旧 API，内部使用 DiscoverableSkill）
@@ -101,14 +112,36 @@ pub struct Skill {
 /// 仓库配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillRepo {
-    /// GitHub 用户/组织名
+    /// GitHub 用户/组织名，或自定义仓库的主机名
     pub owner: String,
-    /// 仓库名称
+    /// 仓库名称，或自定义仓库的路径标识
     pub name: String,
     /// 分支 (默认 "main")
     pub branch: String,
     /// 是否启用
     pub enabled: bool,
+    /// 自定义 Git 仓库 URL（非 GitHub 时使用）
+    #[serde(default, rename = "gitUrl", skip_serializing_if = "Option::is_none")]
+    pub git_url: Option<String>,
+    /// 内部技能 registry API 根 URL（如 https://skills.int.rclabenv.com）
+    #[serde(
+        default,
+        rename = "registryUrl",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub registry_url: Option<String>,
+}
+
+/// 仓库技能发现状态（用于 UI 展示错误信息）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillRepoStatus {
+    pub owner: String,
+    pub name: String,
+    pub branch: String,
+    pub skill_count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 /// 技能安装状态（旧版兼容）
@@ -140,24 +173,40 @@ impl Default for SkillStore {
                     name: "skills".to_string(),
                     branch: "main".to_string(),
                     enabled: true,
+                    git_url: None,
+                    registry_url: None,
                 },
                 SkillRepo {
                     owner: "ComposioHQ".to_string(),
                     name: "awesome-claude-skills".to_string(),
                     branch: "master".to_string(),
                     enabled: true,
+                    git_url: None,
+                    registry_url: None,
                 },
                 SkillRepo {
                     owner: "cexll".to_string(),
                     name: "myclaude".to_string(),
                     branch: "master".to_string(),
                     enabled: true,
+                    git_url: None,
+                    registry_url: None,
                 },
                 SkillRepo {
                     owner: "JimLiu".to_string(),
                     name: "baoyu-skills".to_string(),
                     branch: "main".to_string(),
                     enabled: true,
+                    git_url: None,
+                    registry_url: None,
+                },
+                SkillRepo {
+                    owner: "skills.int.rclabenv.com".to_string(),
+                    name: "registry".to_string(),
+                    branch: "main".to_string(),
+                    enabled: true,
+                    git_url: None,
+                    registry_url: Some("https://skills.int.rclabenv.com".to_string()),
                 },
             ],
         }
@@ -453,7 +502,28 @@ impl SkillService {
 
     /// 构建 Skill 文档 URL（指向仓库中的 SKILL.md 文件）
     fn build_skill_doc_url(owner: &str, repo: &str, branch: &str, doc_path: &str) -> String {
+        if owner.contains('.') {
+            let base = if repo == "repo" {
+                format!("https://{owner}")
+            } else {
+                format!("https://{owner}/{repo}")
+            };
+            return format!("{}/{}/{}", base.trim_end_matches('/'), branch, doc_path);
+        }
         format!("https://github.com/{owner}/{repo}/blob/{branch}/{doc_path}")
+    }
+
+    fn build_skill_doc_url_for_repo(repo: &SkillRepo, doc_path: &str) -> String {
+        if let Some(git_url) = repo.git_url.as_ref() {
+            format!(
+                "{}/{}/{}",
+                git_url.trim_end_matches('/'),
+                repo.branch,
+                doc_path
+            )
+        } else {
+            Self::build_skill_doc_url(&repo.owner, &repo.name, &repo.branch, doc_path)
+        }
     }
 
     /// 从旧 readme_url 中提取仓库内文档路径，兼容 `blob`/`tree` 两种格式
@@ -648,36 +718,50 @@ impl SkillService {
 
         // 如果已存在则跳过下载
         if !dest.exists() {
-            let repo = SkillRepo {
-                owner: skill.repo_owner.clone(),
-                name: skill.repo_name.clone(),
-                branch: skill.repo_branch.clone(),
-                enabled: true,
-            };
+            let (temp_dir, used_branch) = if let Some(git_url) = &skill.source_git_url {
+                let temp_dir = tempfile::tempdir()?;
+                let clone_dest = temp_dir.path().join("repo");
+                let branch = skill.repo_branch.clone();
+                Self::git_clone_shallow(git_url, &branch, &clone_dest)?;
+                let _ = temp_dir.keep();
+                (clone_dest, branch)
+            } else {
+                let repo = SkillRepo {
+                    owner: skill.repo_owner.clone(),
+                    name: skill.repo_name.clone(),
+                    branch: skill.repo_branch.clone(),
+                    enabled: true,
+                    git_url: None,
+                    registry_url: None,
+                };
 
-            // 下载仓库
-            let (temp_dir, used_branch) = timeout(
-                std::time::Duration::from_secs(60),
-                self.download_repo(&repo),
-            )
-            .await
-            .map_err(|_| {
-                anyhow!(format_skill_error(
-                    "DOWNLOAD_TIMEOUT",
-                    &[
-                        ("owner", &repo.owner),
-                        ("name", &repo.name),
-                        ("timeout", "60")
-                    ],
-                    Some("checkNetwork"),
-                ))
-            })??;
+                timeout(
+                    std::time::Duration::from_secs(120),
+                    self.download_repo(&repo),
+                )
+                .await
+                .map_err(|_| {
+                    anyhow!(format_skill_error(
+                        "DOWNLOAD_TIMEOUT",
+                        &[
+                            ("owner", &repo.owner),
+                            ("name", &repo.name),
+                            ("timeout", "120")
+                        ],
+                        Some("checkNetwork"),
+                    ))
+                })??
+            };
             repo_branch = used_branch;
 
+            let lookup_dir = skill
+                .source_path
+                .as_deref()
+                .unwrap_or(&skill.directory);
             // 复制到 SSOT
             let source =
-                Self::resolve_skill_source_dir(&temp_dir, &skill.directory).ok_or_else(|| {
-                    let missing = temp_dir.join(&source_rel).display().to_string();
+                Self::resolve_skill_source_dir(&temp_dir, lookup_dir).ok_or_else(|| {
+                    let missing = temp_dir.join(lookup_dir).display().to_string();
                     let _ = fs::remove_dir_all(&temp_dir);
                     anyhow!(format_skill_error(
                         "SKILL_DIR_NOT_FOUND",
@@ -903,6 +987,8 @@ impl SkillService {
                 name: name.clone(),
                 branch: branch.clone(),
                 enabled: true,
+                git_url: None,
+                registry_url: None,
             };
 
             // 下载仓库 ZIP
@@ -1010,6 +1096,8 @@ impl SkillService {
             name: name.clone(),
             branch: branch.clone(),
             enabled: true,
+            git_url: None,
+            registry_url: None,
         };
 
         let ssot_dir = Self::get_ssot_dir()?;
@@ -1820,24 +1908,44 @@ impl SkillService {
 
     // ========== 发现功能（保留原有逻辑）==========
 
+    const DISCOVER_REPO_TIMEOUT_SECS: u64 = 30;
+
+    fn partition_skill_repos(repos: Vec<SkillRepo>) -> (Vec<SkillRepo>, Vec<SkillRepo>) {
+        let enabled: Vec<SkillRepo> = repos.into_iter().filter(|repo| repo.enabled).collect();
+        enabled
+            .into_iter()
+            .partition(|repo| repo.registry_url.is_some())
+    }
+
     /// 列出所有可发现的技能（从仓库获取）
     pub async fn discover_available(
         &self,
         repos: Vec<SkillRepo>,
     ) -> Result<Vec<DiscoverableSkill>> {
         let mut skills = Vec::new();
+        let (registry_repos, git_repos) = Self::partition_skill_repos(repos);
 
-        // 仅使用启用的仓库
-        let enabled_repos: Vec<SkillRepo> = repos.into_iter().filter(|repo| repo.enabled).collect();
+        // Registry API is fast — fetch first so UI is not blocked by slow GitHub downloads.
+        for repo in registry_repos {
+            match self.fetch_repo_skills(&repo).await {
+                Ok(repo_skills) => skills.extend(repo_skills),
+                Err(e) => log::warn!(
+                    "获取 registry 仓库 {}/{} 技能失败: {}",
+                    repo.owner,
+                    repo.name,
+                    e
+                ),
+            }
+        }
 
-        let fetch_tasks = enabled_repos
+        let fetch_tasks = git_repos
             .iter()
-            .map(|repo| self.fetch_repo_skills(repo));
+            .map(|repo| self.fetch_repo_skills_for_discover(repo));
 
         let results: Vec<Result<Vec<DiscoverableSkill>>> =
             futures::future::join_all(fetch_tasks).await;
 
-        for (repo, result) in enabled_repos.into_iter().zip(results) {
+        for (repo, result) in git_repos.into_iter().zip(results) {
             match result {
                 Ok(repo_skills) => skills.extend(repo_skills),
                 Err(e) => log::warn!("获取仓库 {}/{} 技能失败: {}", repo.owner, repo.name, e),
@@ -1918,10 +2026,106 @@ impl SkillService {
         Ok(skills)
     }
 
+    /// 获取各仓库的技能发现状态（含错误信息）
+    pub async fn discover_repos_with_status(
+        &self,
+        repos: Vec<SkillRepo>,
+    ) -> Vec<SkillRepoStatus> {
+        let (registry_repos, git_repos) = Self::partition_skill_repos(repos);
+        let mut statuses = Vec::new();
+
+        for repo in registry_repos {
+            let result = self.fetch_repo_skills(&repo).await;
+            statuses.push(match result {
+                Ok(skills) => SkillRepoStatus {
+                    owner: repo.owner.clone(),
+                    name: repo.name.clone(),
+                    branch: repo.branch.clone(),
+                    skill_count: skills.len(),
+                    error: None,
+                },
+                Err(e) => SkillRepoStatus {
+                    owner: repo.owner.clone(),
+                    name: repo.name.clone(),
+                    branch: repo.branch.clone(),
+                    skill_count: 0,
+                    error: Some(e.to_string()),
+                },
+            });
+        }
+
+        let fetch_tasks = git_repos
+            .iter()
+            .map(|repo| self.fetch_repo_skills_for_discover(repo));
+
+        let results: Vec<Result<Vec<DiscoverableSkill>>> =
+            futures::future::join_all(fetch_tasks).await;
+
+        for (repo, result) in git_repos.into_iter().zip(results) {
+            statuses.push(match result {
+                Ok(skills) => SkillRepoStatus {
+                    owner: repo.owner.clone(),
+                    name: repo.name.clone(),
+                    branch: repo.branch.clone(),
+                    skill_count: skills.len(),
+                    error: None,
+                },
+                Err(e) => SkillRepoStatus {
+                    owner: repo.owner.clone(),
+                    name: repo.name.clone(),
+                    branch: repo.branch.clone(),
+                    skill_count: 0,
+                    error: Some(e.to_string()),
+                },
+            });
+        }
+
+        statuses
+    }
+
+    /// 从仓库获取技能列表（发现流程，Git 仓库使用较短超时）
+    async fn fetch_repo_skills_for_discover(&self, repo: &SkillRepo) -> Result<Vec<DiscoverableSkill>> {
+        if repo.registry_url.is_some() {
+            return self.fetch_repo_skills(repo).await;
+        }
+
+        let (temp_dir, resolved_branch) = timeout(
+            std::time::Duration::from_secs(Self::DISCOVER_REPO_TIMEOUT_SECS),
+            self.download_repo(repo),
+        )
+        .await
+        .map_err(|_| {
+            anyhow!(format_skill_error(
+                "DOWNLOAD_TIMEOUT",
+                &[
+                    ("owner", &repo.owner),
+                    ("name", &repo.name),
+                    ("timeout", "30"),
+                ],
+                Some("checkNetwork"),
+            ))
+        })??;
+
+        let mut skills = Vec::new();
+        let scan_dir = temp_dir.clone();
+        let mut resolved_repo = repo.clone();
+        resolved_repo.branch = resolved_branch;
+        self.scan_dir_recursive(&scan_dir, &scan_dir, &resolved_repo, &mut skills)?;
+
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        Ok(skills)
+    }
+
     /// 从仓库获取技能列表
     async fn fetch_repo_skills(&self, repo: &SkillRepo) -> Result<Vec<DiscoverableSkill>> {
+        if let Some(registry_url) = &repo.registry_url {
+            return crate::services::internal_registry::discover_skills_from_registry(registry_url)
+                .await;
+        }
+
         let (temp_dir, resolved_branch) =
-            timeout(std::time::Duration::from_secs(60), self.download_repo(repo))
+            timeout(std::time::Duration::from_secs(120), self.download_repo(repo))
                 .await
                 .map_err(|_| {
                     anyhow!(format_skill_error(
@@ -1929,7 +2133,7 @@ impl SkillService {
                         &[
                             ("owner", &repo.owner),
                             ("name", &repo.name),
-                            ("timeout", "60")
+                            ("timeout", "120")
                         ],
                         Some("checkNetwork"),
                     ))
@@ -2009,15 +2213,15 @@ impl SkillService {
             name: meta.name.unwrap_or_else(|| directory.to_string()),
             description: meta.description.unwrap_or_default(),
             directory: directory.to_string(),
-            readme_url: Some(Self::build_skill_doc_url(
-                &repo.owner,
-                &repo.name,
-                &repo.branch,
+            readme_url: Some(Self::build_skill_doc_url_for_repo(
+                repo,
                 doc_path,
             )),
             repo_owner: repo.owner.clone(),
             repo_name: repo.name.clone(),
             repo_branch: repo.branch.clone(),
+            source_git_url: None,
+            source_path: None,
         })
     }
 
@@ -2205,23 +2409,17 @@ impl SkillService {
 
     /// 下载仓库
     async fn download_repo(&self, repo: &SkillRepo) -> Result<(PathBuf, String)> {
+        if repo.git_url.is_some() {
+            return self.download_custom_repo(repo).await;
+        }
+
         let temp_dir = tempfile::tempdir()?;
         let temp_path = temp_dir.path().to_path_buf();
         let _ = temp_dir.keep();
 
-        let mut branches = Vec::new();
-        if !repo.branch.is_empty() && !repo.branch.eq_ignore_ascii_case("HEAD") {
-            branches.push(repo.branch.as_str());
-        }
-        if !branches.contains(&"main") {
-            branches.push("main");
-        }
-        if !branches.contains(&"master") {
-            branches.push("master");
-        }
-
+        let branches = Self::branch_candidates(&repo.branch);
         let mut last_error = None;
-        for branch in branches {
+        for branch in &branches {
             let url = format!(
                 "https://github.com/{}/{}/archive/refs/heads/{}.zip",
                 repo.owner, repo.name, branch
@@ -2238,13 +2436,167 @@ impl SkillService {
             }
         }
 
+        if let Some(result) = Self::try_github_git_clone(repo, &temp_path, &branches) {
+            return Ok(result);
+        }
+
         Err(last_error.unwrap_or_else(|| anyhow::anyhow!("所有分支下载失败")))
+    }
+
+    fn try_github_git_clone(
+        repo: &SkillRepo,
+        temp_path: &Path,
+        branches: &[String],
+    ) -> Option<(PathBuf, String)> {
+        let github_url = format!("https://github.com/{}/{}.git", repo.owner, repo.name);
+        for branch in branches {
+            if temp_path.exists() {
+                let _ = fs::remove_dir_all(temp_path);
+            }
+            if Self::git_clone_shallow(&github_url, branch, temp_path).is_ok() {
+                return Some((temp_path.to_path_buf(), branch.clone()));
+            }
+        }
+        None
+    }
+
+    fn branch_candidates(preferred: &str) -> Vec<String> {
+        let mut branches = Vec::new();
+        if !preferred.is_empty() && !preferred.eq_ignore_ascii_case("HEAD") {
+            branches.push(preferred.to_string());
+        }
+        for fallback in ["main", "master"] {
+            if !branches.iter().any(|b| b.eq_ignore_ascii_case(fallback)) {
+                branches.push(fallback.to_string());
+            }
+        }
+        branches
+    }
+
+    async fn download_custom_repo(&self, repo: &SkillRepo) -> Result<(PathBuf, String)> {
+        let git_url = repo
+            .git_url
+            .as_deref()
+            .ok_or_else(|| anyhow::anyhow!("Missing git_url for custom skill repo"))?;
+        let base = git_url.trim_end_matches('/');
+
+        let temp_dir = tempfile::tempdir()?;
+        let temp_path = temp_dir.path().to_path_buf();
+        let _ = temp_dir.keep();
+
+        let branches = Self::branch_candidates(&repo.branch);
+        let mut last_error = None;
+
+        for branch in &branches {
+            let archive_urls = [
+                format!("{base}/archive/{branch}.zip"),
+                format!("{base}/-/archive/{branch}/{branch}.zip"),
+                format!("{base}/archive/refs/heads/{branch}.zip"),
+            ];
+
+            for url in &archive_urls {
+                match self.download_and_extract(url, &temp_path).await {
+                    Ok(_) => return Ok((temp_path.clone(), branch.clone())),
+                    Err(e) => last_error = Some(e),
+                }
+                let _ = fs::remove_dir_all(&temp_path);
+                fs::create_dir_all(&temp_path)?;
+            }
+        }
+
+        for branch in &branches {
+            let clone_dest = temp_path.join("repo");
+            if clone_dest.exists() {
+                let _ = fs::remove_dir_all(&clone_dest);
+            }
+
+            match Self::git_clone_shallow(base, branch, &clone_dest) {
+                Ok(_) => return Ok((clone_dest, branch.clone())),
+                Err(e) => last_error = Some(e),
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| {
+            anyhow::anyhow!(format_skill_error(
+                "CUSTOM_REPO_DOWNLOAD_FAILED",
+                &[("url", base)],
+                Some("checkNetwork"),
+            ))
+        }))
+    }
+
+    fn git_clone_shallow(url: &str, branch: &str, dest: &Path) -> Result<()> {
+        let clone_url = Self::inject_git_auth(url);
+        fs::create_dir_all(dest.parent().unwrap_or(dest))?;
+
+        let output = Command::new("git")
+            .args([
+                "clone",
+                "--depth",
+                "1",
+                "--single-branch",
+                "--branch",
+                branch,
+                &clone_url,
+            ])
+            .arg(dest)
+            .output()
+            .map_err(|e| {
+                anyhow::anyhow!(format_skill_error(
+                    "GIT_NOT_AVAILABLE",
+                    &[("error", &e.to_string())],
+                    Some("installGit"),
+                ))
+            })?;
+
+        if output.status.success() {
+            return Ok(());
+        }
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(anyhow::anyhow!(format_skill_error(
+            "GIT_CLONE_FAILED",
+            &[("branch", branch), ("stderr", &stderr)],
+            Some("checkNetwork"),
+        )))
+    }
+
+    fn inject_git_auth(url: &str) -> String {
+        if url.contains('@') {
+            return url.to_string();
+        }
+
+        let Ok(token) = std::env::var("CC_SWITCH_SKILL_REPO_TOKEN") else {
+            return url.to_string();
+        };
+        if token.trim().is_empty() {
+            return url.to_string();
+        }
+
+        let Ok(mut parsed) = url::Url::parse(url) else {
+            return url.to_string();
+        };
+
+        if parsed.scheme() == "https" || parsed.scheme() == "http" {
+            let _ = parsed.set_username("oauth2");
+            let _ = parsed.set_password(Some(token.trim()));
+            return parsed.to_string();
+        }
+
+        url.to_string()
     }
 
     /// 下载并解压 ZIP
     async fn download_and_extract(&self, url: &str, dest: &Path) -> Result<()> {
         let client = crate::proxy::http_client::get();
-        let response = client.get(url).send().await?;
+        let mut request = client.get(url);
+        if let Ok(token) = std::env::var("CC_SWITCH_SKILL_REPO_TOKEN") {
+            let token = token.trim();
+            if !token.is_empty() {
+                request = request.header("Authorization", format!("Bearer {token}"));
+            }
+        }
+        let response = request.send().await?;
         if !response.status().is_success() {
             let status = response.status().as_u16().to_string();
             return Err(anyhow::anyhow!(format_skill_error(
@@ -2921,6 +3273,8 @@ fn save_repos_from_lock(
                     // 未知分支时使用 HEAD 语义，后续下载会回退到 main/master。
                     branch: info.branch.clone().unwrap_or_else(|| "HEAD".to_string()),
                     enabled: true,
+                    git_url: None,
+                    registry_url: None,
                 };
                 if let Err(e) = db.save_skill_repo(&skill_repo) {
                     log::warn!("保存 skill 仓库 {}/{} 失败: {}", info.owner, info.repo, e);
@@ -3123,5 +3477,30 @@ mod tests {
             dest.join("SKILL.md").is_file(),
             "existing destination skill should be preserved"
         );
+    }
+
+    #[test]
+    fn build_skill_doc_url_for_custom_repo() {
+        let repo = SkillRepo {
+            owner: "skills.int.rclabenv.com".into(),
+            name: "repo".into(),
+            branch: "master".into(),
+            enabled: true,
+            git_url: Some("https://skills.int.rclabenv.com".into()),
+            registry_url: None,
+        };
+        let url = SkillService::build_skill_doc_url_for_repo(&repo, "skills/foo/SKILL.md");
+        assert_eq!(
+            url,
+            "https://skills.int.rclabenv.com/master/skills/foo/SKILL.md"
+        );
+    }
+
+    #[test]
+    fn branch_candidates_prefers_requested_branch() {
+        let branches = SkillService::branch_candidates("develop");
+        assert_eq!(branches[0], "develop");
+        assert!(branches.contains(&"main".to_string()));
+        assert!(branches.contains(&"master".to_string()));
     }
 }

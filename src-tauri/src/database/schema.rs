@@ -444,6 +444,13 @@ impl Database {
                         Self::migrate_v10_to_v11(conn)?;
                         Self::set_user_version(conn, 11)?;
                     }
+                    11 => {
+                        log::info!(
+                            "迁移数据库从 v11 到 v12（skill_repos 增加 git_url / registry_url）"
+                        );
+                        Self::migrate_v11_to_v12(conn)?;
+                        Self::set_user_version(conn, 12)?;
+                    }
                     _ => {
                         return Err(AppError::Database(format!(
                             "未知的数据库版本 {version}，无法迁移到 {SCHEMA_VERSION}"
@@ -524,6 +531,8 @@ impl Database {
             "TEXT NOT NULL DEFAULT 'main'",
         )?;
         Self::add_column_if_missing(conn, "skill_repos", "enabled", "BOOLEAN NOT NULL DEFAULT 1")?;
+        Self::add_column_if_missing(conn, "skill_repos", "git_url", "TEXT")?;
+        Self::add_column_if_missing(conn, "skill_repos", "registry_url", "TEXT")?;
         // 注意: skills_path 字段已被移除，因为现在支持全仓库递归扫描
 
         Ok(())
@@ -1267,6 +1276,16 @@ impl Database {
         log::info!(
             "v10 -> v11 迁移完成：usage_daily_rollups 已保留 request_model/pricing_model 维度"
         );
+        Ok(())
+    }
+
+    /// v11 -> v12：skill_repos 支持自定义 git URL 与内部 registry URL
+    fn migrate_v11_to_v12(conn: &Connection) -> Result<(), AppError> {
+        if Self::table_exists(conn, "skill_repos")? {
+            Self::add_column_if_missing(conn, "skill_repos", "git_url", "TEXT")?;
+            Self::add_column_if_missing(conn, "skill_repos", "registry_url", "TEXT")?;
+        }
+        log::info!("v11 -> v12 迁移完成：skill_repos 已增加 git_url / registry_url");
         Ok(())
     }
 

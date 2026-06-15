@@ -1222,6 +1222,8 @@ pub fn run() {
             commands::delete_mcp_server,
             commands::toggle_mcp_app,
             commands::import_mcp_from_apps,
+            commands::fetch_internal_mcp_catalog,
+            commands::import_internal_mcp_servers,
             // Prompt management
             commands::get_prompts,
             commands::upsert_prompt,
@@ -1285,6 +1287,7 @@ pub fn run() {
             commands::scan_unmanaged_skills,
             commands::import_skills_from_apps,
             commands::discover_available_skills,
+            commands::get_skill_repo_statuses,
             commands::check_skill_updates,
             commands::update_skill,
             commands::migrate_skill_storage,

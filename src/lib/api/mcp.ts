@@ -126,4 +126,39 @@ export const mcpApi = {
   async importFromApps(): Promise<number> {
     return await invoke("import_mcp_from_apps");
   },
+
+  async fetchInternalCatalog(
+    registryUrl: string,
+  ): Promise<InternalMcpCatalogEntry[]> {
+    return await invoke("fetch_internal_mcp_catalog", { registryUrl });
+  },
+
+  async importInternalServers(
+    registryUrl: string,
+    serverIds: string[],
+  ): Promise<InternalMcpImportResult> {
+    return await invoke("import_internal_mcp_servers", {
+      registryUrl,
+      serverIds,
+    });
+  },
 };
+
+export interface InternalMcpImportResult {
+  imported: number;
+  skipped: Array<{
+    id: string;
+    title: string;
+    reason: string;
+  }>;
+}
+
+export interface InternalMcpCatalogEntry {
+  id: string;
+  title: string;
+  summary?: string;
+  importMethod: string;
+  importContent?: string;
+  gitUrl?: string;
+  readme?: string;
+}

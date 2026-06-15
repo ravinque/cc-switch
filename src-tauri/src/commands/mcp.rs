@@ -8,6 +8,9 @@ use tauri::State;
 
 use crate::app_config::AppType;
 use crate::claude_mcp;
+use crate::services::internal_registry::{
+    fetch_mcp_catalog, import_mcp_entries, InternalMcpCatalogEntry, InternalMcpImportResult,
+};
 use crate::services::McpService;
 use crate::store::AppState;
 
@@ -204,4 +207,32 @@ pub async fn import_mcp_from_apps(state: State<'_, AppState>) -> Result<usize, S
     total += McpService::import_from_opencode(&state).unwrap_or(0);
     total += McpService::import_from_hermes(&state).unwrap_or(0);
     Ok(total)
+}
+
+/// 从内部 MCP registry 获取目录
+#[tauri::command]
+pub async fn fetch_internal_mcp_catalog(
+    registry_url: String,
+) -> Result<Vec<InternalMcpCatalogEntry>, String> {
+    fetch_mcp_catalog(&registry_url)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// 从内部 MCP registry 导入服务器
+#[tauri::command]
+pub async fn import_internal_mcp_servers(
+    state: State<'_, AppState>,
+    registry_url: String,
+    server_ids: Vec<String>,
+) -> Result<InternalMcpImportResult, String> {
+    let entries = fetch_mcp_catalog(&registry_url)
+        .await
+        .map_err(|e| e.to_string())?;
+    let state = state.inner().clone();
+    Ok(import_mcp_entries(
+        &entries,
+        &server_ids,
+        |server| McpService::upsert_server(&state, server).map_err(|e| e.to_string()),
+    ))
 }

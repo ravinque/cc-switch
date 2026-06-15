@@ -59,6 +59,8 @@ export interface DiscoverableSkill {
   repoOwner: string;
   repoName: string;
   repoBranch: string;
+  sourceGitUrl?: string;
+  sourcePath?: string;
 }
 
 /** 未管理的 Skill（用于导入） */
@@ -129,6 +131,18 @@ export interface SkillRepo {
   name: string;
   branch: string;
   enabled: boolean;
+  /** Custom git host URL (non-GitHub repos) */
+  gitUrl?: string;
+  /** Internal skill registry API root (e.g. skills.int.rclabenv.com) */
+  registryUrl?: string;
+}
+
+export interface SkillRepoStatus {
+  owner: string;
+  name: string;
+  branch: string;
+  skillCount: number;
+  error?: string;
 }
 
 // ========== API ==========
@@ -192,6 +206,10 @@ export const skillsApi = {
   /** 发现可安装的 Skills（从仓库获取） */
   async discoverAvailable(): Promise<DiscoverableSkill[]> {
     return await invoke("discover_available_skills");
+  },
+
+  async getRepoStatuses(): Promise<SkillRepoStatus[]> {
+    return await invoke("get_skill_repo_statuses");
   },
 
   /** 检查 Skills 更新 */

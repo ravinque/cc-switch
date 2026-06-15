@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useQueryClient } from "@tanstack/react-query";
 import { Server } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -11,6 +12,7 @@ import {
 } from "@/hooks/useMcp";
 import type { McpServer } from "@/types";
 import type { AppId } from "@/lib/api/types";
+import { InternalMcpRegistryDialog } from "./InternalMcpRegistryDialog";
 import McpFormModal from "./McpFormModal";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { Edit3, Trash2, ExternalLink } from "lucide-react";
@@ -29,6 +31,7 @@ interface UnifiedMcpPanelProps {
 export interface UnifiedMcpPanelHandle {
   openAdd: () => void;
   openImport: () => void;
+  openInternalRegistry: () => void;
 }
 
 const UnifiedMcpPanel = React.forwardRef<
@@ -36,7 +39,9 @@ const UnifiedMcpPanel = React.forwardRef<
   UnifiedMcpPanelProps
 >(({ onOpenChange: _onOpenChange }, ref) => {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [internalRegistryOpen, setInternalRegistryOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
@@ -115,6 +120,7 @@ const UnifiedMcpPanel = React.forwardRef<
   React.useImperativeHandle(ref, () => ({
     openAdd: handleAdd,
     openImport: handleImport,
+    openInternalRegistry: () => setInternalRegistryOpen(true),
   }));
 
   const handleDelete = (id: string) => {
@@ -208,6 +214,14 @@ const UnifiedMcpPanel = React.forwardRef<
           onCancel={() => setConfirmDialog(null)}
         />
       )}
+
+      <InternalMcpRegistryDialog
+        open={internalRegistryOpen}
+        onOpenChange={setInternalRegistryOpen}
+        onImported={() => {
+          queryClient.invalidateQueries({ queryKey: ["mcp", "all"] });
+        }}
+      />
     </div>
   );
 });

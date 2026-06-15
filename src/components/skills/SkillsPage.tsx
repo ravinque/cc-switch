@@ -24,10 +24,12 @@ import {
   useInstalledSkills,
   useInstallSkill,
   useSkillRepos,
+  useSkillRepoStatuses,
   useAddSkillRepo,
   useRemoveSkillRepo,
   useSearchSkillsSh,
 } from "@/hooks/useSkills";
+import { skillMatchesRepo } from "@/lib/skillRepoUrl";
 import type { AppId } from "@/lib/api/types";
 import type {
   DiscoverableSkill,
@@ -84,6 +86,17 @@ export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
     } = useDiscoverableSkills();
     const { data: installedSkills } = useInstalledSkills();
     const { data: repos = [], refetch: refetchRepos } = useSkillRepos();
+    const {
+      data: repoStatuses,
+      refetch: refetchRepoStatuses,
+    } = useSkillRepoStatuses();
+
+    useEffect(() => {
+      if (repoManagerOpen) {
+        refetchDiscoverable();
+        refetchRepoStatuses();
+      }
+    }, [repoManagerOpen, refetchDiscoverable, refetchRepoStatuses]);
 
     // skills.sh 搜索
     const {
@@ -243,15 +256,14 @@ export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
     const handleAddRepo = async (repo: SkillRepo) => {
       try {
         await addRepoMutation.mutateAsync(repo);
-        // Await discovery so we can report the real count
+        const { data: freshStatuses } = await refetchRepoStatuses();
         const { data: freshSkills } = await refetchDiscoverable();
         const count =
-          freshSkills?.filter(
-            (s) =>
-              s.repoOwner === repo.owner &&
-              s.repoName === repo.name &&
-              (s.repoBranch || "main") === (repo.branch || "main"),
-          ).length ?? 0;
+          freshStatuses?.find(
+            (s) => s.owner === repo.owner && s.name === repo.name,
+          )?.skillCount ??
+          freshSkills?.filter((s) => skillMatchesRepo(s, repo)).length ??
+          0;
         toast.success(
           t("skills.repo.addSuccess", {
             owner: repo.owner,
@@ -605,6 +617,7 @@ export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
           <RepoManagerPanel
             repos={repos}
             skills={skills}
+            repoStatuses={repoStatuses}
             onAdd={handleAddRepo}
             onRemove={handleRemoveRepo}
             onClose={() => setRepoManagerOpen(false)}

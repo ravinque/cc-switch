@@ -6,11 +6,18 @@ import { Label } from "@/components/ui/label";
 import { Trash2, ExternalLink, Plus } from "lucide-react";
 import { settingsApi } from "@/lib/api";
 import { FullScreenPanel } from "@/components/common/FullScreenPanel";
-import type { DiscoverableSkill, SkillRepo } from "@/lib/api/skills";
+import type { DiscoverableSkill, SkillRepo, SkillRepoStatus } from "@/lib/api/skills";
+import {
+  formatSkillRepoLabel,
+  parseSkillRepoUrl,
+  skillMatchesRepo,
+  skillRepoOpenUrl,
+} from "@/lib/skillRepoUrl";
 
 interface RepoManagerPanelProps {
   repos: SkillRepo[];
   skills: DiscoverableSkill[];
+  repoStatuses?: SkillRepoStatus[];
   onAdd: (repo: SkillRepo) => Promise<void>;
   onRemove: (owner: string, name: string) => Promise<void>;
   onClose: () => void;
@@ -19,6 +26,7 @@ interface RepoManagerPanelProps {
 export function RepoManagerPanel({
   repos,
   skills,
+  repoStatuses,
   onAdd,
   onRemove,
   onClose,
@@ -28,33 +36,33 @@ export function RepoManagerPanel({
   const [branch, setBranch] = useState("");
   const [error, setError] = useState("");
 
-  const getSkillCount = (repo: SkillRepo) =>
-    skills.filter(
-      (skill) =>
-        skill.repoOwner === repo.owner &&
-        skill.repoName === repo.name &&
-        (skill.repoBranch || "main") === (repo.branch || "main"),
-    ).length;
+  const getSkillCount = (repo: SkillRepo) => {
+    const status = repoStatuses?.find(
+      (s) => s.owner === repo.owner && s.name === repo.name,
+    );
+    if (status) return status.skillCount;
+    return skills.filter((skill) => skillMatchesRepo(skill, repo)).length;
+  };
 
-  const parseRepoUrl = (
-    url: string,
-  ): { owner: string; name: string } | null => {
-    let cleaned = url.trim();
-    cleaned = cleaned.replace(/^https?:\/\/github\.com\//, "");
-    cleaned = cleaned.replace(/\.git$/, "");
+  const getRepoError = (repo: SkillRepo) => {
+    const status = repoStatuses?.find(
+      (s) => s.owner === repo.owner && s.name === repo.name,
+    );
+    return status?.error;
+  };
 
-    const parts = cleaned.split("/");
-    if (parts.length === 2 && parts[0] && parts[1]) {
-      return { owner: parts[0], name: parts[1] };
+  const handleOpenRepo = async (repo: SkillRepo) => {
+    try {
+      await settingsApi.openExternal(skillRepoOpenUrl(repo));
+    } catch (error) {
+      console.error("Failed to open URL:", error);
     }
-
-    return null;
   };
 
   const handleAdd = async () => {
     setError("");
 
-    const parsed = parseRepoUrl(repoUrl);
+    const parsed = parseSkillRepoUrl(repoUrl);
     if (!parsed) {
       setError(t("skills.repo.invalidUrl"));
       return;
@@ -66,20 +74,14 @@ export function RepoManagerPanel({
         name: parsed.name,
         branch: branch || "main",
         enabled: true,
+        gitUrl: parsed.gitUrl,
+        registryUrl: parsed.registryUrl,
       });
 
       setRepoUrl("");
       setBranch("");
     } catch (e) {
       setError(e instanceof Error ? e.message : t("skills.repo.addFailed"));
-    }
-  };
-
-  const handleOpenRepo = async (owner: string, name: string) => {
-    try {
-      await settingsApi.openExternal(`https://github.com/${owner}/${name}`);
-    } catch (error) {
-      console.error("Failed to open URL:", error);
     }
   };
 
@@ -106,6 +108,9 @@ export function RepoManagerPanel({
               onChange={(e) => setRepoUrl(e.target.value)}
               className="mt-2"
             />
+            <p className="mt-2 text-xs text-muted-foreground">
+              {t("skills.repo.authHint")}
+            </p>
           </div>
           <div>
             <Label htmlFor="branch" className="text-foreground">
@@ -153,7 +158,7 @@ export function RepoManagerPanel({
               >
                 <div>
                   <div className="text-sm font-medium text-foreground">
-                    {repo.owner}/{repo.name}
+                    {formatSkillRepoLabel(repo)}
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground">
                     {t("skills.repo.branch")}: {repo.branch || "main"}
@@ -162,6 +167,11 @@ export function RepoManagerPanel({
                         count: getSkillCount(repo),
                       })}
                     </span>
+                    {getRepoError(repo) && (
+                      <span className="ml-2 text-[11px] text-destructive">
+                        {getRepoError(repo)}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -169,7 +179,7 @@ export function RepoManagerPanel({
                     variant="ghost"
                     size="icon"
                     type="button"
-                    onClick={() => handleOpenRepo(repo.owner, repo.name)}
+                    onClick={() => handleOpenRepo(repo)}
                     title={t("common.view", { defaultValue: "查看" })}
                     className="hover:bg-black/5 dark:hover:bg-white/5"
                   >
