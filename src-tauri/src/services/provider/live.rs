@@ -503,6 +503,20 @@ pub(crate) fn build_effective_settings_with_common_config(
         }
     }
 
+    if let Some(meta) = provider.meta.as_ref() {
+        if !meta.llm_api_ids.is_empty() {
+            let profiles = db.get_llm_api_profiles_by_ids(&meta.llm_api_ids)?;
+            if let Some(primary) = profiles.first() {
+                effective_settings = crate::llm_api::apply_profile_to_settings(
+                    app_type,
+                    &effective_settings,
+                    primary,
+                    Some(meta),
+                );
+            }
+        }
+    }
+
     Ok(effective_settings)
 }
 

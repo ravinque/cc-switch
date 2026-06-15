@@ -476,6 +476,13 @@ pub struct ProviderMeta {
     /// 用于多账号支持，关联到特定的 GitHub 账号
     #[serde(rename = "githubAccountId", skip_serializing_if = "Option::is_none")]
     pub github_account_id: Option<String>,
+    /// 关联的全局 LLM API 凭证 ID 列表（有序：首个为主用，其余为故障转移候选）
+    #[serde(
+        default,
+        rename = "llmApiIds",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub llm_api_ids: Vec<String>,
 }
 
 /// 解析 Provider 级自定义 User-Agent 字符串（单一真理来源）。

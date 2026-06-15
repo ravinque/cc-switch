@@ -1601,6 +1601,65 @@
     "officialDescription": "官方登录，不需要填写 API Key",
     "presetDescription": "使用预设配置，只需填写 API Key"
   },
+  "llmApi": {
+    "title": "LLM API 库",
+    "addProfile": "添加 API",
+    "importFromProviders": "从供应商导入",
+    "profileCount": "共 {{count}} 个 API 配置",
+    "empty": "暂无 API 配置",
+    "emptyHint": "添加可复用的 API Key 与 Base URL，供各应用供应商关联使用",
+    "importSuccess": "成功导入 {{imported}} 个（跳过 OAuth/官方 {{skipped}} 个）",
+    "importNone": "未发现可导入的 API 配置",
+    "deleteTitle": "删除 API 配置",
+    "deleteConfirm": "确定删除「{{name}}」？已关联的供应商将不再自动注入该凭证。",
+    "vendors": {
+      "openaiCompatible": "OpenAI 兼容",
+      "anthropic": "Anthropic",
+      "gemini": "Gemini"
+    },
+    "form": {
+      "addTitle": "添加 API 配置",
+      "editTitle": "编辑 API 配置",
+      "name": "名称",
+      "namePlaceholder": "如 DeepSeek、内部网关",
+      "nameRequired": "请填写名称",
+      "vendor": "厂商类型",
+      "baseUrl": "Base URL",
+      "apiKey": "API Key",
+      "notes": "备注",
+      "notesPlaceholder": "可选说明"
+    },
+    "selector": {
+      "title": "关联 LLM API 库",
+      "hint": "勾选后写入 live 配置时自动注入凭证；首个为主用，其余为故障转移候选。",
+      "empty": "请先在 LLM API 库中添加配置",
+      "openLibrary": "打开 API 库",
+      "manage": "管理",
+      "primary": "主用",
+      "failover": "备援 #{{order}}",
+      "moveUp": "上移"
+    },
+    "summaryHint": "全局可复用凭证，可在各应用供应商中关联",
+    "noBaseUrl": "未设置 Base URL"
+  },
+  "webUi": {
+    "title": "Web 访问",
+    "description": "在本机启动 HTTP 服务，用浏览器管理 CC Switch（默认仅 127.0.0.1，需访问令牌）。桌面应用与 macOS/Linux 安装包仍可同时使用。",
+    "enable": "启用 Web 管理界面",
+    "port": "监听端口",
+    "portHint": "仅绑定本机 127.0.0.1，不会暴露到局域网",
+    "refreshStatus": "刷新状态",
+    "copyUrl": "复制访问链接",
+    "openBrowser": "在浏览器打开",
+    "enabledSuccess": "Web 管理界面已启动",
+    "disabledSuccess": "Web 管理界面已关闭",
+    "copied": "访问链接已复制",
+    "statusRunning": "服务状态",
+    "statusUrl": "访问地址",
+    "running": "运行中",
+    "stopped": "已停止",
+    "distMissing": "未找到前端静态资源，请使用正式安装包或先执行 pnpm build:renderer"
+  },
   "mcp": {
     "title": "MCP 管理",
     "import": "导入",

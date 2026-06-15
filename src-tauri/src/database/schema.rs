@@ -113,6 +113,22 @@ impl Database {
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
 
+        // 6b. LLM API Profiles 表（全局 API 凭证库）
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS llm_api_profiles (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            vendor TEXT NOT NULL DEFAULT 'openai_compatible',
+            base_url TEXT NOT NULL DEFAULT '',
+            api_key TEXT NOT NULL DEFAULT '',
+            notes TEXT,
+            created_at INTEGER NOT NULL DEFAULT 0,
+            updated_at INTEGER NOT NULL DEFAULT 0
+        )",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
         // 7. Settings 表
         conn.execute(
             "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)",
@@ -450,6 +466,11 @@ impl Database {
                         );
                         Self::migrate_v11_to_v12(conn)?;
                         Self::set_user_version(conn, 12)?;
+                    }
+                    12 => {
+                        log::info!("迁移数据库从 v12 到 v13（新增 llm_api_profiles 表）");
+                        Self::migrate_v12_to_v13(conn)?;
+                        Self::set_user_version(conn, 13)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1286,6 +1307,26 @@ impl Database {
             Self::add_column_if_missing(conn, "skill_repos", "registry_url", "TEXT")?;
         }
         log::info!("v11 -> v12 迁移完成：skill_repos 已增加 git_url / registry_url");
+        Ok(())
+    }
+
+    /// v12 -> v13：全局 LLM API 凭证库
+    fn migrate_v12_to_v13(conn: &Connection) -> Result<(), AppError> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS llm_api_profiles (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                vendor TEXT NOT NULL DEFAULT 'openai_compatible',
+                base_url TEXT NOT NULL DEFAULT '',
+                api_key TEXT NOT NULL DEFAULT '',
+                notes TEXT,
+                created_at INTEGER NOT NULL DEFAULT 0,
+                updated_at INTEGER NOT NULL DEFAULT 0
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("v12 -> v13 创建 llm_api_profiles 失败: {e}")))?;
+        log::info!("v12 -> v13 迁移完成：已新增 llm_api_profiles 表");
         Ok(())
     }
 

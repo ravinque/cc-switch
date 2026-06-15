@@ -78,6 +78,7 @@ import {
   ProviderAdvancedConfig,
   type PricingModelSourceOption,
 } from "./ProviderAdvancedConfig";
+import { LlmApiProfileSelector } from "./LlmApiProfileSelector";
 import {
   useProviderCategory,
   useApiKeyState,
@@ -299,6 +300,9 @@ function ProviderFormFull({
   );
   const [endpointAutoSelect, setEndpointAutoSelect] = useState<boolean>(
     () => initialData?.meta?.endpointAutoSelect ?? true,
+  );
+  const [selectedLlmApiIds, setSelectedLlmApiIds] = useState<string[]>(
+    () => initialData?.meta?.llmApiIds ?? [],
   );
   const supportsFullUrl = appId === "claude" || appId === "codex";
   const [localIsFullUrl, setLocalIsFullUrl] = useState<boolean>(() => {
@@ -1420,6 +1424,8 @@ function ProviderFormFull({
         supportsFullUrl && category !== "official" && localIsFullUrl
           ? true
           : undefined,
+      llmApiIds:
+        selectedLlmApiIds.length > 0 ? selectedLlmApiIds : undefined,
     };
 
     if (!isCodexOauthProvider && "codexFastMode" in nextMeta) {
@@ -1433,6 +1439,15 @@ function ProviderFormFull({
 
   const shouldShowSpeedTest =
     category !== "official" && category !== "cloud_provider";
+
+  const usesManagedAuth =
+    templatePreset?.providerType === "github_copilot" ||
+    initialData?.meta?.providerType === "github_copilot" ||
+    templatePreset?.providerType === "codex_oauth" ||
+    initialData?.meta?.providerType === "codex_oauth" ||
+    templatePreset?.requiresOAuth === true;
+  const showLlmApiSelector =
+    category !== "official" && !usesManagedAuth;
 
   const {
     shouldShowApiKeyLink: shouldShowClaudeApiKeyLink,
@@ -2317,6 +2332,13 @@ function ProviderFormFull({
               />
               {settingsConfigErrorField}
             </>
+          )}
+
+          {showLlmApiSelector && (
+            <LlmApiProfileSelector
+              selectedIds={selectedLlmApiIds}
+              onChange={setSelectedLlmApiIds}
+            />
           )}
 
           {!isAnyOmoCategory &&

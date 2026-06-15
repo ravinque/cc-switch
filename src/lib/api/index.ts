@@ -3,6 +3,8 @@ export { providersApi, universalProvidersApi } from "./providers";
 export { settingsApi } from "./settings";
 export { backupsApi } from "./settings";
 export { mcpApi } from "./mcp";
+export { llmApiApi } from "./llmApi";
+export { webUiApi } from "./webUi";
 export { promptsApi } from "./prompts";
 export { skillsApi } from "./skills";
 export { usageApi } from "./usage";

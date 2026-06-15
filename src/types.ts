@@ -225,6 +225,20 @@ export interface ProviderMeta {
   providerType?: string;
   // GitHub Copilot 关联账号 ID（旧字段，保留兼容读取）
   githubAccountId?: string;
+  // 关联的全局 LLM API 凭证 ID（有序：首个为主用，其余为故障转移候选）
+  llmApiIds?: string[];
+}
+
+/** 全局 LLM API 凭证配置 */
+export interface LlmApiProfile {
+  id: string;
+  name: string;
+  vendor: string;
+  baseUrl: string;
+  apiKey: string;
+  notes?: string;
+  createdAt: number;
+  updatedAt: number;
 }
 
 // Skill 同步方式
@@ -413,11 +427,11 @@ export interface Settings {
   backupRetainCount?: number;
 
   // ===== 终端设置 =====
-  // 首选终端应用（可选，默认使用系统默认终端）
-  // macOS: "terminal" | "iterm2" | "warp" | "alacritty" | "kitty" | "ghostty" | "wezterm" | "kaku"
-  // Windows: "cmd" | "powershell" | "wt"
-  // Linux: "gnome-terminal" | "konsole" | "xfce4-terminal" | "alacritty" | "kitty" | "ghostty"
   preferredTerminal?: string;
+
+  // ===== Web UI（浏览器访问）=====
+  enableWebUi?: boolean;
+  webUiPort?: number;
 
   // ===== 本机自动迁移状态 =====
   localMigrations?: {

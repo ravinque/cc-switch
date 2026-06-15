@@ -1601,6 +1601,65 @@
     "officialDescription": "Official login, no API Key required",
     "presetDescription": "Use preset configuration, only API Key required"
   },
+  "llmApi": {
+    "title": "LLM API Library",
+    "addProfile": "Add API",
+    "importFromProviders": "Import from Providers",
+    "profileCount": "{{count}} API profile(s)",
+    "empty": "No API profiles yet",
+    "emptyHint": "Add reusable API keys and base URLs for providers across apps",
+    "importSuccess": "Imported {{imported}} (skipped {{skipped}} OAuth/official)",
+    "importNone": "No importable API profiles found",
+    "deleteTitle": "Delete API Profile",
+    "deleteConfirm": "Delete \"{{name}}\"? Linked providers will no longer inject this credential.",
+    "vendors": {
+      "openaiCompatible": "OpenAI Compatible",
+      "anthropic": "Anthropic",
+      "gemini": "Gemini"
+    },
+    "form": {
+      "addTitle": "Add API Profile",
+      "editTitle": "Edit API Profile",
+      "name": "Name",
+      "namePlaceholder": "e.g. DeepSeek, internal gateway",
+      "nameRequired": "Name is required",
+      "vendor": "Vendor Type",
+      "baseUrl": "Base URL",
+      "apiKey": "API Key",
+      "notes": "Notes",
+      "notesPlaceholder": "Optional notes"
+    },
+    "selector": {
+      "title": "Link LLM API Library",
+      "hint": "Selected profiles inject credentials on live write; first is primary, rest are failover candidates.",
+      "empty": "Add profiles in the LLM API Library first",
+      "openLibrary": "Open Library",
+      "manage": "Manage",
+      "primary": "Primary",
+      "failover": "Failover #{{order}}",
+      "moveUp": "Move up"
+    },
+    "summaryHint": "Reusable credentials linkable from providers across apps",
+    "noBaseUrl": "No Base URL"
+  },
+  "webUi": {
+    "title": "Web Access",
+    "description": "Serve the management UI over HTTP on localhost (token required). Desktop and macOS/Linux packages continue to work alongside browser access.",
+    "enable": "Enable Web management UI",
+    "port": "Listen port",
+    "portHint": "Binds to 127.0.0.1 only — not exposed on LAN",
+    "refreshStatus": "Refresh status",
+    "copyUrl": "Copy access URL",
+    "openBrowser": "Open in browser",
+    "enabledSuccess": "Web UI server started",
+    "disabledSuccess": "Web UI server stopped",
+    "copied": "Access URL copied",
+    "statusRunning": "Server",
+    "statusUrl": "URL",
+    "running": "Running",
+    "stopped": "Stopped",
+    "distMissing": "Static UI bundle not found — use a release build or run pnpm build:renderer"
+  },
   "mcp": {
     "title": "MCP Management",
     "import": "Import",

@@ -16,8 +16,10 @@ mod gemini_mcp;
 pub mod hermes_config;
 mod init_status;
 mod lightweight;
+mod llm_api;
 #[cfg(target_os = "linux")]
 mod linux_fix;
+mod management_server;
 mod mcp;
 mod openclaw_config;
 mod opencode_config;
@@ -907,7 +909,15 @@ pub fn run() {
                 app.handle().clone(),
             );
             // 将同一个实例注入到全局状态，避免重复创建导致的不一致
+            let web_ui_controller = Arc::new(management_server::WebUiController::new(
+                app_state.db.clone(),
+                app.handle().clone(),
+            ));
             app.manage(app_state);
+            app.manage(web_ui_controller.clone());
+            tauri::async_runtime::spawn(async move {
+                management_server::bootstrap_from_settings(&web_ui_controller).await;
+            });
 
             // 从数据库加载日志配置并应用
             {
@@ -1224,6 +1234,16 @@ pub fn run() {
             commands::import_mcp_from_apps,
             commands::fetch_internal_mcp_catalog,
             commands::import_internal_mcp_servers,
+            // LLM API profile library
+            commands::get_llm_api_profiles,
+            commands::upsert_llm_api_profile,
+            commands::delete_llm_api_profile,
+            commands::import_llm_api_profiles_from_providers,
+            // Web UI management server
+            commands::get_web_ui_status,
+            commands::set_web_ui_enabled,
+            commands::regenerate_web_ui_token,
+            commands::open_web_ui_in_browser,
             // Prompt management
             commands::get_prompts,
             commands::upsert_prompt,

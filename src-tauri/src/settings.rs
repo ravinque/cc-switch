@@ -475,9 +475,20 @@ pub struct AppSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preferred_terminal: Option<String>,
 
-    // ===== 本机自动迁移状态 =====
+    /// 本机自动迁移状态
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub local_migrations: Option<LocalMigrations>,
+
+    // ===== Web UI（浏览器访问管理界面）=====
+    /// 是否启用本机 Web 管理界面（默认关闭，仅绑定 127.0.0.1）
+    #[serde(default)]
+    pub enable_web_ui: bool,
+    /// Web UI 监听端口（默认 8787）
+    #[serde(default = "default_web_ui_port")]
+    pub web_ui_port: u16,
+    /// Web UI 访问令牌（持久化，不在常规 get_settings 响应中返回）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub web_ui_token: Option<String>,
 }
 
 fn default_show_in_tray() -> bool {
@@ -486,6 +497,10 @@ fn default_show_in_tray() -> bool {
 
 fn default_minimize_to_tray_on_close() -> bool {
     true
+}
+
+fn default_web_ui_port() -> u16 {
+    8787
 }
 
 impl Default for AppSettings {
@@ -533,6 +548,9 @@ impl Default for AppSettings {
             backup_retain_count: None,
             preferred_terminal: None,
             local_migrations: None,
+            enable_web_ui: false,
+            web_ui_port: default_web_ui_port(),
+            web_ui_token: None,
         }
     }
 }
@@ -717,6 +735,7 @@ pub fn get_settings_for_frontend() -> AppSettings {
         s3.secret_access_key.clear();
     }
     settings.webdav_backup = None;
+    settings.web_ui_token = None;
     settings
 }
 
@@ -732,7 +751,7 @@ pub fn update_settings(mut new_settings: AppSettings) -> Result<(), AppError> {
     Ok(())
 }
 
-fn mutate_settings<F>(mutator: F) -> Result<(), AppError>
+pub(crate) fn mutate_settings<F>(mutator: F) -> Result<(), AppError>
 where
     F: FnOnce(&mut AppSettings),
 {

@@ -50,6 +50,7 @@ import { useLastValidValue } from "@/hooks/useLastValidValue";
 import { extractErrorMessage } from "@/utils/errorUtils";
 import { isTextEditableTarget } from "@/utils/domUtils";
 import { deepClone } from "@/utils/deepClone";
+import { isWebRuntime } from "@/lib/runtime";
 import { cn } from "@/lib/utils";
 import {
   isWindows,
@@ -70,6 +71,7 @@ import { ClaudeDesktopRouteToggle } from "@/components/proxy/ClaudeDesktopRouteT
 import { FailoverToggle } from "@/components/proxy/FailoverToggle";
 import UsageScriptModal from "@/components/UsageScriptModal";
 import UnifiedMcpPanel from "@/components/mcp/UnifiedMcpPanel";
+import LlmApiPanel from "@/components/llmApi/LlmApiPanel";
 import PromptPanel from "@/components/prompts/PromptPanel";
 import { SkillsPage } from "@/components/skills/SkillsPage";
 import UnifiedSkillsPanel from "@/components/skills/UnifiedSkillsPanel";
@@ -98,6 +100,7 @@ type View =
   | "skills"
   | "skillsDiscovery"
   | "mcp"
+  | "llmApi"
   | "agents"
   | "universal"
   | "sessions"
@@ -143,6 +146,7 @@ const VALID_VIEWS: View[] = [
   "skills",
   "skillsDiscovery",
   "mcp",
+  "llmApi",
   "agents",
   "universal",
   "sessions",
@@ -181,7 +185,10 @@ function App() {
   const useAppWindowControls =
     isLinux() && (settingsData?.useAppWindowControls ?? false);
   const dragBarHeight = useAppWindowControls ? 32 : DEFAULT_DRAG_BAR_HEIGHT;
-  const contentTopOffset = dragBarHeight + HEADER_HEIGHT;
+  const isWebMode = isWebRuntime();
+  const contentTopOffset = isWebMode
+    ? HEADER_HEIGHT
+    : dragBarHeight + HEADER_HEIGHT;
   const visibleApps: VisibleApps = settingsData?.visibleApps ?? {
     claude: true,
     "claude-desktop": true,
@@ -243,6 +250,7 @@ function App() {
 
   const promptPanelRef = useRef<any>(null);
   const mcpPanelRef = useRef<any>(null);
+  const llmApiPanelRef = useRef<any>(null);
   const skillsPageRef = useRef<any>(null);
   const unifiedSkillsPanelRef = useRef<any>(null);
   const addActionButtonClass =
@@ -906,6 +914,13 @@ function App() {
               onOpenChange={() => setCurrentView("providers")}
             />
           );
+        case "llmApi":
+          return (
+            <LlmApiPanel
+              ref={llmApiPanelRef}
+              onOpenChange={() => setCurrentView("providers")}
+            />
+          );
         case "agents":
           return (
             <AgentsPanel onOpenChange={() => setCurrentView("providers")} />
@@ -1022,7 +1037,7 @@ function App() {
       className="flex flex-col h-screen overflow-hidden bg-background text-foreground selection:bg-primary/30 pb-4"
       style={{ overflowX: "hidden", paddingTop: contentTopOffset }}
     >
-      {(dragBarHeight > 0 || useAppWindowControls) && (
+      {!isWebMode && (dragBarHeight > 0 || useAppWindowControls) && (
         <div
           className="fixed top-0 left-0 right-0 z-[70] flex items-center justify-end px-2"
           data-tauri-drag-region
@@ -1142,6 +1157,7 @@ function App() {
                   {currentView === "skills" && t("skills.title")}
                   {currentView === "skillsDiscovery" && t("skills.title")}
                   {currentView === "mcp" && t("mcp.unifiedPanel.title")}
+                  {currentView === "llmApi" && t("llmApi.title")}
                   {currentView === "agents" && t("agents.title")}
                   {currentView === "universal" &&
                     t("universalProvider.title", {
@@ -1285,6 +1301,28 @@ function App() {
                     </Button>
                   </>
                 )}
+                {currentView === "llmApi" && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => llmApiPanelRef.current?.openImport()}
+                      className="hover:bg-black/5 dark:hover:bg-white/5"
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      {t("llmApi.importFromProviders")}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => llmApiPanelRef.current?.openAdd()}
+                      className="hover:bg-black/5 dark:hover:bg-white/5"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      {t("llmApi.addProfile")}
+                    </Button>
+                  </>
+                )}
                 {currentView === "skills" && (
                   <>
                     <Button
@@ -1410,6 +1448,15 @@ function App() {
                               <Button
                                 variant="ghost"
                                 size="sm"
+                                onClick={() => setCurrentView("llmApi")}
+                                className="text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 w-8 px-2"
+                                title={t("llmApi.title")}
+                              >
+                                <KeyRound className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
                                 onClick={() => setCurrentView("mcp")}
                                 className="text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 w-8 px-2"
                                 title={t("mcp.title")}
@@ -1505,6 +1552,15 @@ function App() {
                                 title={t("sessionManager.title")}
                               >
                                 <History className="flex-shrink-0 w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setCurrentView("llmApi")}
+                                className="text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 w-8 px-2"
+                                title={t("llmApi.title")}
+                              >
+                                <KeyRound className="w-4 h-4" />
                               </Button>
                               <Button
                                 variant="ghost"
